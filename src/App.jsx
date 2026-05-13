@@ -219,6 +219,8 @@ export default function App() {
   const [editingClient, setEditingClient] = useState(null);
   const [importPreview, setImportPreview] = useState([]);
   const [showTouchpointModal, setShowTouchpointModal] = useState(false);
+  const [expandedStep, setExpandedStep] = useState(null);
+  const [stepNote, setStepNote] = useState("");
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState("connecting");
@@ -331,6 +333,38 @@ export default function App() {
     } catch (err) {
       console.error("Touchpoint error:", err);
       notify("Failed to log touchpoint", "error");
+    }
+  };
+
+  const updateNurtureStep = async (clientId, stepKey, completed, note) => {
+    const client = clients.find(c => c.id === clientId);
+    if (!client || !supabase) return;
+    const log = { ...(client.nurture_log || {}) };
+    if (completed) {
+      log[stepKey] = {
+        completed: true,
+        date: new Date().toISOString().split("T")[0],
+        note: note || ""
+      };
+    } else {
+      delete log[stepKey];
+    }
+    try {
+      const { data, error } = await supabase
+        .from("past_clients")
+        .update({ nurture_log: log, updated_at: new Date().toISOString() })
+        .eq("id", clientId)
+        .select();
+      if (error) throw error;
+      const newClient = data[0];
+      setClients(prev => prev.map(c => c.id === clientId ? newClient : c));
+      if (selectedClient?.id === clientId) setSelectedClient(newClient);
+      notify(completed ? "Step completed!" : "Step unmarked");
+      setExpandedStep(null);
+      setStepNote("");
+    } catch (err) {
+      console.error("Nurture log error:", err);
+      notify("Failed to update step", "error");
     }
   };
 
@@ -813,7 +847,7 @@ export default function App() {
           const annDays = daysUntilAnniversary(c.close_date);
           return (
             <div className="fade-in">
-              <button onClick={() => { setView("clients"); setSelectedClient(null); }}
+              <button onClick={() => { setView("clients"); setSelectedClient(null); setExpandedStep(null); }}
                 style={{ background: "none", border: "none", color: "#6b7280", cursor: "pointer", fontSize: 13, marginBottom: 16 }}>
                 ← Back to Clients
               </button>
@@ -859,24 +893,93 @@ export default function App() {
                   <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#d4a853" }}>
                     {c.transaction_type === "Seller" ? "🏠 Seller" : "🔑 Buyer"} Nurture Timeline
                   </h3>
-                  <p style={{ fontSize: 11, color: "#4b5563", marginBottom: 14 }}>{stages.length} touchpoints</p>
+                  <p style={{ fontSize: 11, color: "#4b5563", marginBottom: 14 }}>
+                    {Object.keys(c.nurture_log || {}).filter(k => (c.nurture_log || {})[k]?.completed).length} of {stages.length} completed — click a step to manage
+                  </p>
                   {stages.map((s, i) => {
-                    const completed = i <= stageIdx;
-                    const current = i === stageIdx;
+                    const logEntry = (c.nurture_log || {})[s.key];
+                    const isCompleted = logEntry?.completed;
+                    const isExpanded = expandedStep === s.key;
+                    const autoCompleted = !isCompleted && i <= stageIdx;
                     return (
-                      <div key={s.key} style={{ display: "flex", gap: 12, marginBottom: 8, alignItems: "center" }}>
-                        <div style={{
-                          width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                          background: current ? "rgba(212,168,83,.2)" : completed ? "rgba(34,197,94,.1)" : "rgba(255,255,255,.03)",
-                          border: `2px solid ${current ? "#d4a853" : completed ? "#22c55e" : "#2a2f3a"}`,
-                          fontSize: 14, transition: "all .3s",
-                          animation: current ? "pulse 2s infinite" : "none"
-                        }}>{completed ? "✓" : s.icon}</div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: current ? 600 : 400, color: current ? "#d4a853" : completed ? "#9ca3af" : "#4b5563" }}>{s.label}</div>
-                          <div style={{ fontSize: 11, color: "#4b5563" }}>{s.desc}</div>
+                      <div key={s.key} style={{ marginBottom: 6 }}>
+                        <div onClick={() => { setExpandedStep(isExpanded ? null : s.key); setStepNote(logEntry?.note || ""); }}
+                          style={{
+                            display: "flex", gap: 12, alignItems: "center", padding: "8px 10px",
+                            borderRadius: isExpanded ? "10px 10px 0 0" : 10, cursor: "pointer",
+                            background: isExpanded ? "rgba(212,168,83,.08)" : "transparent",
+                            transition: "background .2s"
+                          }}
+                          onMouseEnter={e => { if (!isExpanded) e.currentTarget.style.background = "rgba(255,255,255,.03)"; }}
+                          onMouseLeave={e => { if (!isExpanded) e.currentTarget.style.background = "transparent"; }}>
+                          <div style={{
+                            width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                            background: isCompleted ? "rgba(34,197,94,.15)" : autoCompleted ? "rgba(212,168,83,.1)" : "rgba(255,255,255,.03)",
+                            border: `2px solid ${isCompleted ? "#22c55e" : autoCompleted ? "#d4a85380" : "#2a2f3a"}`,
+                            fontSize: 14, transition: "all .3s", flexShrink: 0
+                          }}>{isCompleted ? "✓" : s.icon}</div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{
+                              fontSize: 13, fontWeight: isCompleted ? 500 : 400,
+                              color: isCompleted ? "#22c55e" : autoCompleted ? "#d4a853" : "#6b7280",
+                              textDecoration: isCompleted ? "none" : "none"
+                            }}>
+                              {s.label}
+                              {isCompleted && <span style={{ fontSize: 10, color: "#4b5563", marginLeft: 8 }}>{formatDate(logEntry.date)}</span>}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#4b5563" }}>{s.desc}</div>
+                            {isCompleted && logEntry.note && (
+                              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, fontStyle: "italic" }}>"{logEntry.note}"</div>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#4b5563", flexShrink: 0 }}>Day {s.days === 999 ? "365+" : s.days}</div>
+                          <div style={{ fontSize: 12, color: "#4b5563", flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</div>
                         </div>
-                        <div style={{ fontSize: 10, color: "#4b5563" }}>Day {s.days === 999 ? "365+" : s.days}</div>
+
+                        {isExpanded && (
+                          <div style={{
+                            padding: "12px 14px", background: "rgba(212,168,83,.05)",
+                            borderRadius: "0 0 10px 10px", border: "1px solid rgba(212,168,83,.1)",
+                            borderTop: "none", animation: "fadeIn .2s ease"
+                          }}>
+                            <textarea value={stepNote} onChange={e => setStepNote(e.target.value)}
+                              placeholder="Add a note... (what did you say? how did they respond?)"
+                              style={{
+                                width: "100%", minHeight: 60, padding: 10, borderRadius: 8,
+                                border: "1px solid #1e2330", background: "#0c0f14", color: "#e8e6e1",
+                                fontSize: 12, resize: "vertical", outline: "none", marginBottom: 8
+                              }} />
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {!isCompleted ? (
+                                <button onClick={() => updateNurtureStep(c.id, s.key, true, stepNote)}
+                                  style={{
+                                    padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+                                    background: "#22c55e", color: "#fff", fontWeight: 600, fontSize: 12
+                                  }}>✓ Mark Complete</button>
+                              ) : (
+                                <button onClick={() => updateNurtureStep(c.id, s.key, false)}
+                                  style={{
+                                    padding: "8px 16px", borderRadius: 8, border: "1px solid #2a2f3a",
+                                    cursor: "pointer", background: "transparent", color: "#9ca3af",
+                                    fontWeight: 500, fontSize: 12
+                                  }}>Undo Complete</button>
+                              )}
+                              {isCompleted && stepNote !== (logEntry?.note || "") && (
+                                <button onClick={() => updateNurtureStep(c.id, s.key, true, stepNote)}
+                                  style={{
+                                    padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer",
+                                    background: "#d4a853", color: "#0c0f14", fontWeight: 600, fontSize: 12
+                                  }}>Update Note</button>
+                              )}
+                              <button onClick={() => { setExpandedStep(null); setStepNote(""); }}
+                                style={{
+                                  padding: "8px 16px", borderRadius: 8, border: "1px solid #2a2f3a",
+                                  cursor: "pointer", background: "transparent", color: "#6b7280",
+                                  fontSize: 12
+                                }}>Close</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1232,4 +1335,3 @@ function TouchpointModal({ onSave, onClose }) {
     </div>
   );
 }
-  
