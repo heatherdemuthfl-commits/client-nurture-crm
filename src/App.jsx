@@ -51,6 +51,12 @@ const TRANSACTION_TYPES = [
   { value: "Both", label: "Both", color: "#8b5cf6", icon: "🔄" },
 ];
 
+const SUGGESTED_TAGS = [
+  "Has Kids", "Dog Lover", "Cat Lover", "Investor", "Military",
+  "Snowbird", "First-Time Buyer", "Referred Someone", "Sphere",
+  "Relocating", "Downsizing", "Upsizing", "New Construction",
+];
+
 const TOUCHPOINT_TYPES = [
   { key: "email", label: "Email", icon: "\u2709\uFE0F" },
   { key: "call", label: "Call", icon: "\u{1F4DE}" },
@@ -215,12 +221,14 @@ export default function App() {
   const [filterSegment, setFilterSegment] = useState("All");
   const [filterReferral, setFilterReferral] = useState("All");
   const [filterType, setFilterType] = useState("All");
+  const [filterTag, setFilterTag] = useState("All");
   const [sortBy, setSortBy] = useState("name");
   const [editingClient, setEditingClient] = useState(null);
   const [importPreview, setImportPreview] = useState([]);
   const [showTouchpointModal, setShowTouchpointModal] = useState(false);
   const [expandedStep, setExpandedStep] = useState(null);
   const [stepNote, setStepNote] = useState("");
+  const [tagInput, setTagInput] = useState("");
   const [notification, setNotification] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dbStatus, setDbStatus] = useState("connecting");
@@ -431,6 +439,7 @@ export default function App() {
     if (filterSegment !== "All" && !(c.flodesk_segments || []).includes(filterSegment)) return false;
     if (filterReferral !== "All" && c.referral_potential !== parseInt(filterReferral)) return false;
     if (filterType !== "All" && c.transaction_type !== filterType) return false;
+    if (filterTag !== "All" && !(c.tags || []).includes(filterTag)) return false;
     return true;
   }).sort((a, b) => {
     if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
@@ -775,6 +784,11 @@ export default function App() {
                 <option value="All">All Referral</option>
                 {REFERRAL_LEVELS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
+              <select value={filterTag} onChange={e => setFilterTag(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #1e2330", background: "#13161d", color: "#e8e6e1", fontSize: 13 }}>
+                <option value="All">All Tags</option>
+                {[...new Set(clients.flatMap(c => c.tags || []))].sort().map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
               <select value={sortBy} onChange={e => setSortBy(e.target.value)}
                 style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #1e2330", background: "#13161d", color: "#e8e6e1", fontSize: 13 }}>
                 <option value="name">Sort: Name</option>
@@ -808,6 +822,20 @@ export default function App() {
                       <div style={{ fontSize: 11, color: "#6b7280" }}>
                         {c.address ? c.address.substring(0, 50) : "No address"} · Closed {formatDate(c.close_date)}
                       </div>
+                      {(c.tags || []).length > 0 && (
+                        <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                          {(c.tags || []).slice(0, 4).map(tag => (
+                            <span key={tag} style={{
+                              padding: "2px 7px", borderRadius: 8, fontSize: 9, fontWeight: 500,
+                              background: "rgba(59,130,246,.1)", color: "#60a5fa",
+                              border: "1px solid rgba(59,130,246,.15)"
+                            }}>{tag}</span>
+                          ))}
+                          {(c.tags || []).length > 4 && (
+                            <span style={{ fontSize: 9, color: "#4b5563" }}>+{(c.tags || []).length - 4}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div style={{ textAlign: "center" }}>
                       <div style={{
@@ -1045,6 +1073,59 @@ export default function App() {
                             }}>{seg}</button>
                         );
                       })}
+                    </div>
+                  </div>
+
+                  <div style={{ background: "#13161d", border: "1px solid #1e2330", borderRadius: 14, padding: 20 }}>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#d4a853" }}>Tags</h3>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                      {(c.tags || []).map(tag => (
+                        <span key={tag} style={{
+                          padding: "5px 10px", borderRadius: 16, fontSize: 11, fontWeight: 500,
+                          background: "rgba(59,130,246,.12)", color: "#60a5fa",
+                          border: "1px solid rgba(59,130,246,.25)", display: "flex", alignItems: "center", gap: 6
+                        }}>
+                          {tag}
+                          <span onClick={() => {
+                            updateClient({ ...c, tags: (c.tags || []).filter(t => t !== tag) });
+                          }} style={{ cursor: "pointer", fontSize: 13, color: "#9ca3af", lineHeight: 1 }}>×</span>
+                        </span>
+                      ))}
+                      {(c.tags || []).length === 0 && <span style={{ fontSize: 12, color: "#4b5563", fontStyle: "italic" }}>No tags yet</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                      <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && tagInput.trim() && !(c.tags || []).includes(tagInput.trim())) {
+                            updateClient({ ...c, tags: [...(c.tags || []), tagInput.trim()] });
+                            setTagInput("");
+                          }
+                        }}
+                        placeholder="Type a tag + Enter..."
+                        style={{
+                          flex: 1, padding: "8px 12px", borderRadius: 8,
+                          border: "1px solid #1e2330", background: "#0c0f14", color: "#e8e6e1",
+                          fontSize: 12, outline: "none"
+                        }} />
+                      <button onClick={() => {
+                        if (tagInput.trim() && !(c.tags || []).includes(tagInput.trim())) {
+                          updateClient({ ...c, tags: [...(c.tags || []), tagInput.trim()] });
+                          setTagInput("");
+                        }
+                      }} style={{
+                        padding: "8px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: "rgba(59,130,246,.2)", color: "#60a5fa", fontWeight: 600, fontSize: 12
+                      }}>+ Add</button>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {SUGGESTED_TAGS.filter(t => !(c.tags || []).includes(t)).slice(0, 8).map(tag => (
+                        <button key={tag} onClick={() => updateClient({ ...c, tags: [...(c.tags || []), tag] })}
+                          style={{
+                            padding: "4px 10px", borderRadius: 12, fontSize: 10, fontWeight: 400,
+                            border: "1px dashed #2a2f3a", background: "transparent",
+                            color: "#4b5563", cursor: "pointer", transition: "all .2s"
+                          }}>{tag}</button>
+                      ))}
                     </div>
                   </div>
 
