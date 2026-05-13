@@ -7,14 +7,31 @@ const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 // ─── Constants ───
-const NURTURE_STAGES = [
-  { key: "week1", label: "Welcome", days: 7, icon: "\u{1F389}", desc: "Thank you + welcome gift" },
-  { key: "day30", label: "Check-in", days: 30, icon: "\u{1F3E1}", desc: "How's the house?" },
-  { key: "day90", label: "90-Day", days: 90, icon: "\u{1F527}", desc: "Home maintenance tips" },
-  { key: "day180", label: "6-Month", days: 180, icon: "\u{1F4CA}", desc: "Market update + value check" },
-  { key: "day365", label: "Anniversary", days: 365, icon: "\u{1F382}", desc: "Home anniversary celebration" },
-  { key: "ongoing", label: "Evergreen", days: 999, icon: "\u267B\uFE0F", desc: "Monthly newsletter + seasonal" },
+const BUYER_STAGES = [
+  { key: "day3", label: "Welcome Home", days: 3, icon: "\u{1F3E0}", desc: "Congrats, home binder, warranty info, vendor list" },
+  { key: "day14", label: "Settling In", days: 14, icon: "\u{1F4E6}", desc: "How's the move? Need contractor recs?" },
+  { key: "day45", label: "Check-in", days: 45, icon: "\u{1F44B}", desc: "How's the neighborhood? Everything working?" },
+  { key: "day90", label: "Maintenance", days: 90, icon: "\u{1F527}", desc: "Seasonal maintenance checklist + home value update" },
+  { key: "day180", label: "6-Month Update", days: 180, icon: "\u{1F4CA}", desc: "Market update, home value estimate" },
+  { key: "day270", label: "9-Month Touch", days: 270, icon: "\u{1F91D}", desc: "Local events, soft referral ask" },
+  { key: "day365", label: "Anniversary", days: 365, icon: "\u{1F382}", desc: "Happy home anniversary! CMA update + referral ask" },
+  { key: "ongoing", label: "Quarterly", days: 999, icon: "\u267B\uFE0F", desc: "Market stats, local content, seasonal tips" },
 ];
+
+const SELLER_STAGES = [
+  { key: "day3", label: "Thank You", days: 3, icon: "\u{1F4DD}", desc: "Thanks for trusting me, final docs reminder" },
+  { key: "day14", label: "Next Chapter", days: 14, icon: "\u2728", desc: "How's the transition? Need anything?" },
+  { key: "day45", label: "Stay Connected", days: 45, icon: "\u{1F44B}", desc: "Personal check-in, local update" },
+  { key: "day90", label: "Life Update", days: 90, icon: "\u2615", desc: "How are you settling in? Open-ended" },
+  { key: "day180", label: "6-Month Touch", days: 180, icon: "\u{1F4AC}", desc: "Thinking of you + old neighborhood market update" },
+  { key: "day365", label: "Anniversary", days: 365, icon: "\u{1F382}", desc: "One year since we closed! Referral ask" },
+  { key: "ongoing", label: "Quarterly", days: 999, icon: "\u267B\uFE0F", desc: "Newsletter, market stats, stay top of mind" },
+];
+
+const getStagesForType = (type) => {
+  if (type === "Seller") return SELLER_STAGES;
+  return BUYER_STAGES; // Buyer and Both default to buyer timeline
+};
 
 const REFERRAL_LEVELS = [
   { value: 1, label: "Low", color: "#94a3b8" },
@@ -55,20 +72,22 @@ const daysSince = (dateStr) => {
   if (!dateStr) return 0;
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 };
-const getCurrentStage = (closeDate) => {
+const getCurrentStage = (closeDate, type) => {
+  const stages = getStagesForType(type);
   const d = daysSince(closeDate);
-  for (let i = NURTURE_STAGES.length - 1; i >= 0; i--) {
-    if (d >= NURTURE_STAGES[i].days || i === NURTURE_STAGES.length - 1) {
-      if (i === NURTURE_STAGES.length - 1) return NURTURE_STAGES[i];
-      return NURTURE_STAGES[i + 1] || NURTURE_STAGES[i];
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (d >= stages[i].days || i === stages.length - 1) {
+      if (i === stages.length - 1) return stages[i];
+      return stages[i + 1] || stages[i];
     }
   }
-  return NURTURE_STAGES[0];
+  return stages[0];
 };
-const getStageIndex = (closeDate) => {
+const getStageIndex = (closeDate, type) => {
+  const stages = getStagesForType(type);
   const d = daysSince(closeDate);
-  for (let i = NURTURE_STAGES.length - 1; i >= 0; i--) {
-    if (d >= NURTURE_STAGES[i].days) return i;
+  for (let i = stages.length - 1; i >= 0; i--) {
+    if (d >= stages[i].days) return i;
   }
   return 0;
 };
@@ -653,19 +672,39 @@ export default function App() {
 
                 {/* Nurture Pipeline Overview */}
                 <div style={{ gridColumn: "1 / -1", background: "#13161d", border: "1px solid #1e2330", borderRadius: 14, padding: 20 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, color: "#d4a853", marginBottom: 16 }}>Nurture Pipeline</h3>
-                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${NURTURE_STAGES.length}, 1fr)`, gap: 8 }}>
-                    {NURTURE_STAGES.map((stage, si) => {
-                      const count = clients.filter(c => getStageIndex(c.close_date) === si).length;
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: "#3b82f6", marginBottom: 4 }}>🔑 Buyer Nurture Pipeline</h3>
+                  <p style={{ fontSize: 11, color: "#4b5563", marginBottom: 12 }}>{clients.filter(c => c.transaction_type !== "Seller").length} clients</p>
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${BUYER_STAGES.length}, 1fr)`, gap: 6, marginBottom: 20 }}>
+                    {BUYER_STAGES.map((stage, si) => {
+                      const count = clients.filter(c => c.transaction_type !== "Seller" && getStageIndex(c.close_date, c.transaction_type) === si).length;
                       return (
                         <div key={stage.key} style={{
-                          textAlign: "center", padding: "14px 8px", borderRadius: 10,
-                          background: count > 0 ? "rgba(212,168,83,.08)" : "rgba(255,255,255,.02)",
-                          border: `1px solid ${count > 0 ? "rgba(212,168,83,.2)" : "#1e2330"}`
+                          textAlign: "center", padding: "12px 6px", borderRadius: 10,
+                          background: count > 0 ? "rgba(59,130,246,.08)" : "rgba(255,255,255,.02)",
+                          border: `1px solid ${count > 0 ? "rgba(59,130,246,.2)" : "#1e2330"}`
                         }}>
-                          <div style={{ fontSize: 22, marginBottom: 4 }}>{stage.icon}</div>
-                          <div style={{ fontSize: 24, fontWeight: 700, color: count > 0 ? "#d4a853" : "#374151", fontFamily: "'Playfair Display', serif" }}>{count}</div>
-                          <div style={{ fontSize: 10, color: "#6b7280", marginTop: 2 }}>{stage.label}</div>
+                          <div style={{ fontSize: 18, marginBottom: 2 }}>{stage.icon}</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: count > 0 ? "#3b82f6" : "#374151", fontFamily: "'Playfair Display', serif" }}>{count}</div>
+                          <div style={{ fontSize: 9, color: "#6b7280", marginTop: 2 }}>{stage.label}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <h3 style={{ fontSize: 14, fontWeight: 600, color: "#f59e0b", marginBottom: 4 }}>🏠 Seller Nurture Pipeline</h3>
+                  <p style={{ fontSize: 11, color: "#4b5563", marginBottom: 12 }}>{clients.filter(c => c.transaction_type === "Seller").length} clients</p>
+                  <div style={{ display: "grid", gridTemplateColumns: `repeat(${SELLER_STAGES.length}, 1fr)`, gap: 6 }}>
+                    {SELLER_STAGES.map((stage, si) => {
+                      const count = clients.filter(c => c.transaction_type === "Seller" && getStageIndex(c.close_date, c.transaction_type) === si).length;
+                      return (
+                        <div key={stage.key} style={{
+                          textAlign: "center", padding: "12px 6px", borderRadius: 10,
+                          background: count > 0 ? "rgba(245,158,11,.08)" : "rgba(255,255,255,.02)",
+                          border: `1px solid ${count > 0 ? "rgba(245,158,11,.2)" : "#1e2330"}`
+                        }}>
+                          <div style={{ fontSize: 18, marginBottom: 2 }}>{stage.icon}</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: count > 0 ? "#f59e0b" : "#374151", fontFamily: "'Playfair Display', serif" }}>{count}</div>
+                          <div style={{ fontSize: 9, color: "#6b7280", marginTop: 2 }}>{stage.label}</div>
                         </div>
                       );
                     })}
@@ -716,7 +755,7 @@ export default function App() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {filtered.map((c, i) => {
-                const stage = getCurrentStage(c.close_date);
+                const stage = getCurrentStage(c.close_date, c.transaction_type);
                 const lastTouch = c.touchpoints?.length ? c.touchpoints[c.touchpoints.length - 1] : null;
                 const refLevel = REFERRAL_LEVELS.find(r => r.value === c.referral_potential);
                 const txType = TRANSACTION_TYPES.find(t => t.value === c.transaction_type) || TRANSACTION_TYPES[0];
@@ -767,8 +806,9 @@ export default function App() {
         {/* ═══════ CLIENT DETAIL ═══════ */}
         {view === "client-detail" && selectedClient && (() => {
           const c = clients.find(x => x.id === selectedClient.id) || selectedClient;
-          const stage = getCurrentStage(c.close_date);
-          const stageIdx = getStageIndex(c.close_date);
+          const stages = getStagesForType(c.transaction_type);
+          const stage = getCurrentStage(c.close_date, c.transaction_type);
+          const stageIdx = getStageIndex(c.close_date, c.transaction_type);
           const refLevel = REFERRAL_LEVELS.find(r => r.value === c.referral_potential);
           const annDays = daysUntilAnniversary(c.close_date);
           return (
@@ -816,8 +856,11 @@ export default function App() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div style={{ background: "#13161d", border: "1px solid #1e2330", borderRadius: 14, padding: 20 }}>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, color: "#d4a853" }}>Nurture Timeline</h3>
-                  {NURTURE_STAGES.map((s, i) => {
+                  <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4, color: "#d4a853" }}>
+                    {c.transaction_type === "Seller" ? "🏠 Seller" : "🔑 Buyer"} Nurture Timeline
+                  </h3>
+                  <p style={{ fontSize: 11, color: "#4b5563", marginBottom: 14 }}>{stages.length} touchpoints</p>
+                  {stages.map((s, i) => {
                     const completed = i <= stageIdx;
                     const current = i === stageIdx;
                     return (
@@ -1189,3 +1232,4 @@ function TouchpointModal({ onSave, onClose }) {
     </div>
   );
 }
+  
