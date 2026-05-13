@@ -28,6 +28,12 @@ const FLODESK_SEGMENTS = [
   "Seasonal Updates", "VIP Circle", "Referral Partners", "Anniversary Drip"
 ];
 
+const TRANSACTION_TYPES = [
+  { value: "Buyer", label: "Buyer", color: "#3b82f6", icon: "🔑" },
+  { value: "Seller", label: "Seller", color: "#f59e0b", icon: "🏠" },
+  { value: "Both", label: "Both", color: "#8b5cf6", icon: "🔄" },
+];
+
 const TOUCHPOINT_TYPES = [
   { key: "email", label: "Email", icon: "\u2709\uFE0F" },
   { key: "call", label: "Call", icon: "\u{1F4DE}" },
@@ -40,7 +46,7 @@ const TOUCHPOINT_TYPES = [
 const DEFAULT_CLIENT = {
   name: "", email: "", phone: "", address: "",
   close_date: "", purchase_price: "", property_type: "Single Family",
-  referral_potential: 2, flodesk_segments: ["Past Clients"],
+  transaction_type: "Buyer", referral_potential: 2, flodesk_segments: ["Past Clients"],
   touchpoints: [], notes: "", tags: [], source: "Manual",
 };
 
@@ -189,6 +195,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [filterSegment, setFilterSegment] = useState("All");
   const [filterReferral, setFilterReferral] = useState("All");
+  const [filterType, setFilterType] = useState("All");
   const [sortBy, setSortBy] = useState("name");
   const [editingClient, setEditingClient] = useState(null);
   const [importPreview, setImportPreview] = useState([]);
@@ -370,6 +377,7 @@ export default function App() {
         !(c.address || "").toLowerCase().includes(search.toLowerCase())) return false;
     if (filterSegment !== "All" && !(c.flodesk_segments || []).includes(filterSegment)) return false;
     if (filterReferral !== "All" && c.referral_potential !== parseInt(filterReferral)) return false;
+    if (filterType !== "All" && c.transaction_type !== filterType) return false;
     return true;
   }).sort((a, b) => {
     if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
@@ -684,6 +692,11 @@ export default function App() {
                 <option value="All">All Segments</option>
                 {FLODESK_SEGMENTS.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
+              <select value={filterType} onChange={e => setFilterType(e.target.value)}
+                style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #1e2330", background: "#13161d", color: "#e8e6e1", fontSize: 13 }}>
+                <option value="All">All Types</option>
+                {TRANSACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+              </select>
               <select value={filterReferral} onChange={e => setFilterReferral(e.target.value)}
                 style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #1e2330", background: "#13161d", color: "#e8e6e1", fontSize: 13 }}>
                 <option value="All">All Referral</option>
@@ -706,12 +719,13 @@ export default function App() {
                 const stage = getCurrentStage(c.close_date);
                 const lastTouch = c.touchpoints?.length ? c.touchpoints[c.touchpoints.length - 1] : null;
                 const refLevel = REFERRAL_LEVELS.find(r => r.value === c.referral_potential);
+                const txType = TRANSACTION_TYPES.find(t => t.value === c.transaction_type) || TRANSACTION_TYPES[0];
                 return (
                   <div key={c.id} onClick={() => { setSelectedClient(c); setView("client-detail"); }}
                     className="slide-in" style={{
                       background: "#13161d", border: "1px solid #1e2330", borderRadius: 12,
                       padding: "14px 18px", cursor: "pointer", display: "grid",
-                      gridTemplateColumns: "1fr auto auto auto", gap: 16, alignItems: "center",
+                      gridTemplateColumns: "1fr auto auto auto auto", gap: 16, alignItems: "center",
                       transition: "all .2s", animationDelay: `${i * .03}s`
                     }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = "#d4a853"; e.currentTarget.style.background = "#161a23"; }}
@@ -721,6 +735,13 @@ export default function App() {
                       <div style={{ fontSize: 11, color: "#6b7280" }}>
                         {c.address ? c.address.substring(0, 50) : "No address"} · Closed {formatDate(c.close_date)}
                       </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{
+                        fontSize: 11, fontWeight: 600, color: txType.color,
+                        background: txType.color + "18", padding: "3px 10px", borderRadius: 12,
+                        border: `1px solid ${txType.color}30`
+                      }}>{txType.icon} {txType.label}</div>
                     </div>
                     <div style={{ textAlign: "center" }}>
                       <span style={{ fontSize: 16 }}>{stage.icon}</span>
@@ -822,6 +843,20 @@ export default function App() {
                   <div style={{ background: "#13161d", border: "1px solid #1e2330", borderRadius: 14, padding: 20 }}>
                     <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#d4a853" }}>Status</h3>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Transaction Type</div>
+                        <div style={{ marginTop: 4, display: "flex", gap: 4 }}>
+                          {TRANSACTION_TYPES.map(t => (
+                            <button key={t.value} onClick={() => updateClient({ ...c, transaction_type: t.value })}
+                              style={{
+                                padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                                border: `1px solid ${c.transaction_type === t.value ? t.color : "#2a2f3a"}`,
+                                background: c.transaction_type === t.value ? t.color + "20" : "transparent",
+                                color: c.transaction_type === t.value ? t.color : "#4b5563",
+                              }}>{t.icon} {t.label}</button>
+                          ))}
+                        </div>
+                      </div>
                       <div>
                         <div style={{ fontSize: 10, color: "#6b7280", textTransform: "uppercase", letterSpacing: 1 }}>Referral Potential</div>
                         <div style={{ fontSize: 16, fontWeight: 700, color: refLevel?.color, marginTop: 4 }}>{refLevel?.label}</div>
@@ -983,6 +1018,7 @@ function ClientForm({ initial, onSave, onCancel }) {
     close_date: initial.close_date || "",
     purchase_price: initial.purchase_price || "",
     property_type: initial.property_type || "Single Family",
+    transaction_type: initial.transaction_type || "Buyer",
     referral_potential: initial.referral_potential || 2,
     flodesk_segments: initial.flodesk_segments || ["Past Clients"],
     notes: initial.notes || "",
@@ -1033,6 +1069,12 @@ function ClientForm({ initial, onSave, onCancel }) {
           <label style={labelStyle}>Property Type</label>
           <select value={form.property_type} onChange={e => up("property_type", e.target.value)} style={inputStyle}>
             {["Single Family", "Condo/Townhome", "Multi-Family", "Land", "Commercial"].map(t => <option key={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>Transaction Type</label>
+          <select value={form.transaction_type || "Buyer"} onChange={e => up("transaction_type", e.target.value)} style={inputStyle}>
+            {TRANSACTION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
         <div>
