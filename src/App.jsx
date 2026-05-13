@@ -135,11 +135,13 @@ const mapCSVToClient = (row) => {
   const closeDate = g("customfieldhomeanniversary") || g("closedate") || g("close") || "";
 
   // Parse close date — Lofty formats as "Jul 08, 2025" or similar
-  let parsedDate = "";
-  if (closeDate) {
+  let parsedDate = null;
+  if (closeDate && closeDate.length > 5 && /[a-zA-Z]/.test(closeDate)) {
     try {
       const d = new Date(closeDate);
-      if (!isNaN(d.getTime())) parsedDate = d.toISOString().split("T")[0];
+      if (!isNaN(d.getTime()) && d.getFullYear() > 1990 && d.getFullYear() < 2100) {
+        parsedDate = d.toISOString().split("T")[0];
+      }
     } catch {}
   }
 
@@ -164,18 +166,18 @@ const mapCSVToClient = (row) => {
 
   return {
     name: fullName || "Unknown",
-    email,
-    phone,
-    address,
+    email: email || null,
+    phone: phone || null,
+    address: address || null,
     close_date: parsedDate,
-    purchase_price: "",
-    property_type: leadType.includes("Seller") && leadType.includes("Buyer") ? "Single Family" : "Single Family",
+    purchase_price: null,
+    property_type: "Single Family",
     referral_potential: 2,
-    source: source === "CSV Import" ? "Lofty Import" : source,
+    source: source === "CSV Import" ? "Lofty Import" : (source || "Lofty Import"),
     flodesk_segments: ["Past Clients"],
     touchpoints: [],
-    notes: fullNotes,
-    tags,
+    notes: fullNotes || null,
+    tags: tags.length > 0 ? tags : [],
   };
 };
 
@@ -322,20 +324,43 @@ export default function App() {
 
   const confirmImport = async () => {
     if (!supabase) return;
-    try {
-      const { data, error } = await supabase
-        .from("past_clients")
-        .insert(importPreview)
-        .select();
-      if (error) throw error;
-      setClients(prev => [...prev, ...data]);
-      notify(`${data.length} clients imported!`);
-      setImportPreview([]);
-      setView("clients");
-    } catch (err) {
-      console.error("Import error:", err);
-      notify("Import failed — check CSV format", "error");
+    let imported = [];
+    let errors = 0;
+    // Insert in batches of 10 to avoid one bad row killing everything
+    for (let i = 0; i < importPreview.length; i += 10) {
+      const batch = importPreview.slice(i, i + 10);
+      try {
+        const { data, error } = await supabase
+          .from("past_clients")
+          .insert(batch)
+          .select();
+        if (error) {
+          // Try one by one if batch fails
+          for (const client of batch) {
+            try {
+              const { data: d2, error: e2 } = await supabase
+                .from("past_clients")
+                .insert([client])
+                .select();
+              if (!e2 && d2) imported.push(d2[0]);
+              else errors++;
+            } catch { errors++; }
+          }
+        } else if (data) {
+          imported.push(...data);
+        }
+      } catch {
+        errors++;
+      }
     }
+    setClients(prev => [...prev, ...imported]);
+    if (imported.length > 0) {
+      notify(`${imported.length} clients imported!${errors > 0 ? ` (${errors} skipped)` : ""}`);
+    } else {
+      notify("Import failed — no clients could be added", "error");
+    }
+    setImportPreview([]);
+    setView(imported.length > 0 ? "clients" : "dashboard");
   };
 
   // ─── Filtered & Sorted ───
