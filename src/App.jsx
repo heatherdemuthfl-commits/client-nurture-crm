@@ -100,43 +100,82 @@ const parseCSV = (text) => {
     return cols;
   };
   if (lines.length < 2) return [];
-  const headers = splitRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const headers = splitRow(lines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, "").trim());
   return lines.slice(1).filter(l => l.trim()).map(line => {
     const vals = splitRow(line);
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
+    headers.forEach((h, i) => { obj[h] = (vals[i] || "").replace(/`/g, "").trim(); });
     return obj;
   });
 };
 
 const mapCSVToClient = (row) => {
-  const find = (keys) => {
-    for (const k of keys) {
-      for (const rk of Object.keys(row)) {
-        if (rk.includes(k) && row[rk]) return row[rk];
-      }
-    }
-    return "";
-  };
-  const name = find(["name", "fullname", "contact", "client"]) ||
-    [find(["firstname", "first"]), find(["lastname", "last"])].filter(Boolean).join(" ");
+  // Direct Lofty column mapping
+  const g = (key) => (row[key] || "").trim();
+
+  // Name: Lofty uses "firstname" and "lastname"
+  const firstName = g("firstname") || g("first");
+  const lastName = g("lastname") || g("last");
+  const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+  // Email: Lofty uses "primaryemail"
+  const email = g("primaryemail") || g("email") || g("otheremail") || g("mail");
+
+  // Phone: Lofty uses "primaryphone"
+  const phone = g("primaryphone") || g("phone") || g("otherphone") || g("mobile") || g("cell");
+
+  // Address: Lofty uses "streetaddressmailingaddress", "citymailingaddress", etc.
+  const street = g("streetaddressmailingaddress") || g("streetaddresssellingproperty1") || g("streetaddressbuyingproperty1") || g("address") || g("street");
+  const city = g("citymailingaddress") || g("citysellingproperty1") || g("citybuyingproperty1") || g("city") || g("citypreference");
+  const state = g("provincemailingaddress") || g("provincesellingproperty1") || g("provincebuyingproperty1") || g("state");
+  const zip = g("postalcodemailingaddress") || g("postalcodesellingproperty1") || g("postalcodebuyingproperty1") || g("zip") || g("postal");
+  const address = [street, city, state].filter(Boolean).join(", ") + (zip ? " " + zip : "");
+
+  // Close date: Lofty "customfieldhomeanniversary" or parse from tags
+  const closeDate = g("customfieldhomeanniversary") || g("closedate") || g("close") || "";
+
+  // Parse close date — Lofty formats as "Jul 08, 2025" or similar
+  let parsedDate = "";
+  if (closeDate) {
+    try {
+      const d = new Date(closeDate);
+      if (!isNaN(d.getTime())) parsedDate = d.toISOString().split("T")[0];
+    } catch {}
+  }
+
+  // Lead type from Lofty
+  const leadType = g("leadtype") || "";
+
+  // Tags from Lofty
+  const tags = g("tag") ? g("tag").split("|").map(t => t.trim()).filter(Boolean) : [];
+
+  // Notes from Lofty
+  const notes = [g("note1"), g("note2"), g("note3"), g("note4"), g("note5")]
+    .filter(Boolean)
+    .map(n => n.replace(/&nbsp;/g, " ").replace(/<[^>]*>/g, "").trim())
+    .join("\n");
+
+  // Spouse from custom field
+  const spouse = g("customfieldspouse");
+  const fullNotes = [notes, spouse ? `Spouse: ${spouse}` : ""].filter(Boolean).join("\n");
+
+  // Source
+  const source = g("source") || "Lofty Import";
+
   return {
-    name: name || "Unknown",
-    email: find(["email", "mail"]),
-    phone: find(["phone", "mobile", "cell"]),
-    address: find(["address", "property", "street"]) +
-      (find(["city"]) ? ", " + find(["city"]) : "") +
-      (find(["state"]) ? ", " + find(["state"]) : "") +
-      (find(["zip", "postal"]) ? " " + find(["zip", "postal"]) : ""),
-    close_date: find(["closedate", "close", "closingdate", "closing", "sold", "solddate"]),
-    purchase_price: find(["price", "saleprice", "purchaseprice", "soldprice", "amount"]),
-    property_type: "Single Family",
+    name: fullName || "Unknown",
+    email,
+    phone,
+    address,
+    close_date: parsedDate,
+    purchase_price: "",
+    property_type: leadType.includes("Seller") && leadType.includes("Buyer") ? "Single Family" : "Single Family",
     referral_potential: 2,
-    source: "CSV Import",
+    source: source === "CSV Import" ? "Lofty Import" : source,
     flodesk_segments: ["Past Clients"],
     touchpoints: [],
-    notes: "",
-    tags: [],
+    notes: fullNotes,
+    tags,
   };
 };
 
